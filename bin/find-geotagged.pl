@@ -7,6 +7,7 @@ use Cwd qw(abs_path);
 use lib "$FindBin::RealBin/../lib";
 use File::Find;
 use Image::ExifTool;
+use Time::HiRes qw(time);
 use File::Find::Geotagged;
 
 sub parse_args {
@@ -60,12 +61,36 @@ unless (caller) {
     # --- 4. Slow full scan, skipping cached hits and storing coords ---
     my $exifTool = Image::ExifTool->new;
 
+    # spinner shown while EXIF data is being read, throttled to 4 updates/sec
+    my @SPINNER   = qw(⠏ ⠛ ⠹ ⢸ ⣰ ⣤ ⣆ ⡇);
+    my $spin_idx  = 0;
+    my $spin_last = 0;
+    my $spin_shown = 0;
+
+    my $spin = sub {
+        my ($file) = @_;
+        my $now = time;
+        return if $now - $spin_last < 0.1;
+        $spin_last  = $now;
+        $spin_shown = 1;
+        printf "\r\e[K%s %s", $SPINNER[$spin_idx++ % @SPINNER], $file;
+        $| = 1;
+    };
+    my $clear_spin = sub {
+        if ($spin_shown) {
+            print "\r\e[K";
+            $spin_shown = 0;
+        }
+    };
+
     find(
         {
             wanted => sub {
                 return unless -f $_;
                 return unless /\.(jpe?g|heic|tiff?)$/i;
                 return if $already_found{$File::Find::name};
+
+                $spin->($File::Find::name);
 
                 my $info = $exifTool->ImageInfo($_, { PrintConv => 0 }, 'GPSLatitude', 'GPSLongitude');
                 return unless defined $info->{GPSLatitude} && defined $info->{GPSLongitude};
@@ -81,6 +106,7 @@ unless (caller) {
                 my $dist_km = File::Find::Geotagged::distance_km($lat, $lon, $lat0, $lon0);
 
                 if ($dist_km <= $radius_km) {
+                    $clear_spin->();
                     printf "%s\t%.3f km - %f, %f\n", $File::Find::name, $dist_km, $lat, $lon;
                 }
             },
@@ -88,6 +114,8 @@ unless (caller) {
         },
         @dirs
     );
+
+    $clear_spin->();
 }
 
 1;

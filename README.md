@@ -32,6 +32,10 @@ Output lists each matching file with its distance and coordinates:
 /home/user/photo/belgrade.jpg	0.432 km - 44.786200, 20.449100
 ```
 
+While the slow EXIF scan runs, a spinner with the path of the file
+currently being read is shown in place (updated at most 10 times per
+second); found results are printed on their own lines.
+
 ## Cache
 
 Coordinates of every geotagged file found during a scan are stored in a

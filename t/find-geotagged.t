@@ -70,6 +70,10 @@ system('exiftool', '-overwrite_original', '-q',
 sub run_script {
     my (@args) = @_;
     my $out = `perl "$script" @args 2>&1`;
+    # strip spinner output: "\r\e[K<frame> <file>" segments are always
+    # followed by another '\r'; result lines end with '\n' and are kept
+    $out =~ s/\r\e\[K[^\n\r]*(?=\r)//g;
+    $out =~ s/\r\e\[K//g;
     return $out;
 }
 
@@ -83,12 +87,14 @@ my $out3 = run_script('10.0/10.0', '1', $dir);
 like($out1, qr/photo\.jpg/, 'separate LAT LON finds the photo');
 like($out2, qr/photo\.jpg/, 'LAT/LON shorthand finds the photo (cache hit)');
 is($out2, $out1, 'cached result matches uncached result');
-unlike($out3, qr/photo\.jpg/, 'far-away coordinates do not match');
+unlike($out3, qr/km - /, 'far-away coordinates do not match');
 
 # invocation through a symlink must still locate lib/
 my $link = File::Spec->catfile($data_dir, 'find-geotagged-link');
 symlink($script, $link) or die "symlink: $!";
 my $out4 = `perl "$link" 44.7654/20.1234 1 "$dir" 2>&1`;
+$out4 =~ s/\r\e\[K[^\n\r]*(?=\r)//g;
+$out4 =~ s/\r\e\[K//g;
 like($out4, qr/photo\.jpg/, 'script works when invoked through a symlink');
 
 # a relative DIR argument yields absolute paths (what the cache stores)
