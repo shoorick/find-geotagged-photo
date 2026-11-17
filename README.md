@@ -64,6 +64,10 @@ lives in the `File::Find::Geotagged` module (`lib/`).
 prove -l t/
 ```
 
+## License
+
+[MIT](LICENSE)
+
 ## Author
 
 Alexander Sapozhnikov <shoorick@cpan.org> <http://shoorick.ru>
