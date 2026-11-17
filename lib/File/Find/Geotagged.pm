@@ -56,6 +56,8 @@ Class method: great-circle distance between two points in kilometers.
 
 Inserts or replaces coordinates for a file (filename has a UNIQUE
 index, so re-scanning updates the row instead of duplicating it).
+The C<modified_at> column is set to the current UTC time on every
+write.
 
 =back
 
@@ -90,10 +92,11 @@ sub connect {
 
     $dbh->do(<<'SQL');
 CREATE TABLE IF NOT EXISTS photos (
-    id        INTEGER PRIMARY KEY,
-    filename  TEXT    NOT NULL UNIQUE,
-    latitude  REAL    NOT NULL,
-    longitude REAL    NOT NULL
+    id          INTEGER PRIMARY KEY,
+    filename    TEXT    NOT NULL UNIQUE,
+    latitude    REAL    NOT NULL,
+    longitude   REAL    NOT NULL,
+    modified_at TEXT    NOT NULL
 )
 SQL
     $dbh->do('CREATE INDEX IF NOT EXISTS idx_photos_bbox ON photos (latitude, longitude)');
@@ -109,7 +112,7 @@ sub find_in_bbox {
     my $lon_delta = abs($cos_lat) < 1e-6 ? 180 : $lat_delta / $cos_lat;
 
     my $sth = $self->{dbh}->prepare(<<'SQL');
-SELECT filename, latitude, longitude
+SELECT filename, latitude, longitude, modified_at
 FROM photos
 WHERE latitude  BETWEEN ? AND ?
   AND longitude BETWEEN ? AND ?
@@ -125,7 +128,8 @@ SQL
 sub store_coords {
     my ($self, $filename, $lat, $lon) = @_;
     $self->{dbh}->do(
-        'INSERT OR REPLACE INTO photos (filename, latitude, longitude) VALUES (?, ?, ?)',
+        q{INSERT OR REPLACE INTO photos (filename, latitude, longitude, modified_at)
+          VALUES (?, ?, ?, datetime('now'))},
         undef, $filename, $lat, $lon,
     );
 }

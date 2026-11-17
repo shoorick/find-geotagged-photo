@@ -27,6 +27,8 @@ $cache->store_coords('/tmp/b.jpg', 10.0,    10.0);
 my @rows = $cache->find_in_bbox(44.7, 20.0, 50);
 is(scalar @rows, 1, 'find_in_bbox returns only rows inside the bbox');
 is($rows[0]{filename}, '/tmp/a.jpg', 'correct filename returned');
+like($rows[0]{modified_at}, qr/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/,
+    'modified_at is set to the write time');
 
 # dedupe: storing the same filename again must not create a second row
 $cache->store_coords('/tmp/a.jpg', 44.8, 20.2);
