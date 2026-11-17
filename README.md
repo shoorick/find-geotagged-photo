@@ -63,3 +63,11 @@ lives in the `File::Find::Geotagged` module (`lib/`).
 ```sh
 prove -l t/
 ```
+
+## Author
+
+Alexander Sapozhnikov <shoorick@cpan.org> <http://shoorick.ru>
+
+## Support the project
+
+If you find this project useful, you can support its development via [PayPal](https://paypal.me/shoorick77).
