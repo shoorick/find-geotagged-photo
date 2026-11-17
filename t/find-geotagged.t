@@ -5,7 +5,7 @@ use warnings;
 use Test::More;
 use File::Temp qw(tempdir);
 use File::Spec;
-use Cwd qw(abs_path);
+use Cwd qw(abs_path getcwd);
 
 my $script = abs_path(File::Spec->catfile('bin', 'find-geotagged.pl'));
 die "Cannot locate $script" unless $script && -f $script;
@@ -44,6 +44,8 @@ is_deeply(
 # --- end-to-end test with a real geotagged JPEG ---
 
 my $dir = tempdir(CLEANUP => 1);
+my $data_dir = tempdir(CLEANUP => 1);
+local $ENV{XDG_DATA_HOME} = $data_dir;
 my $jpg = File::Spec->catfile($dir, 'photo.jpg');
 
 # smallest valid JPEG (1x1 px)
@@ -72,11 +74,29 @@ sub run_script {
 }
 
 my $out1 = run_script('44.7654', '20.1234', '1', $dir);
-my $out2 = run_script('44.7654/20.1234', '1', $dir);
+my $db = File::Spec->catfile($data_dir, 'find-geotagged', 'geotagged.db');
+ok(-f $db, 'first run creates the cache database');
+
+my $out2 = run_script('44.7654/20.1234', '1', $dir); # second run hits the cache
 my $out3 = run_script('10.0/10.0', '1', $dir);
 
 like($out1, qr/photo\.jpg/, 'separate LAT LON finds the photo');
-like($out2, qr/photo\.jpg/, 'LAT/LON shorthand finds the photo');
+like($out2, qr/photo\.jpg/, 'LAT/LON shorthand finds the photo (cache hit)');
+is($out2, $out1, 'cached result matches uncached result');
 unlike($out3, qr/photo\.jpg/, 'far-away coordinates do not match');
+
+# invocation through a symlink must still locate lib/
+my $link = File::Spec->catfile($data_dir, 'find-geotagged-link');
+symlink($script, $link) or die "symlink: $!";
+my $out4 = `perl "$link" 44.7654/20.1234 1 "$dir" 2>&1`;
+like($out4, qr/photo\.jpg/, 'script works when invoked through a symlink');
+
+# a relative DIR argument yields absolute paths (what the cache stores)
+my $abs_dir = abs_path($dir);
+my $cwd = getcwd;
+chdir $dir or die "chdir: $!";
+my $out5 = run_script('44.7654/20.1234', '1', '.');
+chdir $cwd or die "chdir back: $!";
+like($out5, qr/^\Q$abs_dir\E\/photo\.jpg/m, 'output paths are absolute');
 
 done_testing;

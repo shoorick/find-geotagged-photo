@@ -2,9 +2,12 @@
 
 use strict;
 use warnings;
+use FindBin;
+use Cwd qw(abs_path);
+use lib "$FindBin::RealBin/../lib";
 use File::Find;
 use Image::ExifTool;
-use Math::Trig qw(deg2rad great_circle_distance);
+use File::Find::Geotagged;
 
 sub parse_args {
     my @args = @_;
@@ -25,8 +28,36 @@ unless (caller) {
             "       $0 LAT/LON RADIUS_KM DIR [DIR ...]\n";
     }
 
-    my $RADIUS = 6371; # km
+    # store and compare absolute paths in the cache
+    @dirs = map { abs_path($_) // $_ } @dirs;
 
+    # --- 1-3. Results from the SQLite cache: bbox lookup, circle
+    # filter, remember what was already printed ---
+    my %already_found;
+    my $cache = eval { File::Find::Geotagged->connect };
+    if ($cache) {
+        if (my $err = eval {
+            for my $row ($cache->find_in_bbox($lat0, $lon0, $radius_km)) {
+                $already_found{$row->{filename}} = 1;
+                my $dist_km = File::Find::Geotagged::distance_km(
+                    $row->{latitude}, $row->{longitude}, $lat0, $lon0);
+                if ($dist_km <= $radius_km) {
+                    printf "%s\t%.3f km - %f, %f\n",
+                        $row->{filename}, $dist_km, $row->{latitude}, $row->{longitude};
+                }
+            }
+            1;
+        }) {
+            # cache hits served
+        } else {
+            warn "Cache query failed, falling back to full scan: $@\n";
+            %already_found = ();
+        }
+    } else {
+        warn "Cache unavailable, scanning without it: $@\n";
+    }
+
+    # --- 4. Slow full scan, skipping cached hits and storing coords ---
     my $exifTool = Image::ExifTool->new;
 
     find(
@@ -34,6 +65,7 @@ unless (caller) {
             wanted => sub {
                 return unless -f $_;
                 return unless /\.(jpe?g|heic|tiff?)$/i;
+                return if $already_found{$File::Find::name};
 
                 my $info = $exifTool->ImageInfo($_, { PrintConv => 0 }, 'GPSLatitude', 'GPSLongitude');
                 return unless defined $info->{GPSLatitude} && defined $info->{GPSLongitude};
@@ -41,14 +73,12 @@ unless (caller) {
                 my $lat = $info->{GPSLatitude};
                 my $lon = $info->{GPSLongitude};
 
-                # to radians
-                my $lat_r  = deg2rad($lat);
-                my $lon_r  = deg2rad($lon);
-                my $lat0_r = deg2rad($lat0);
-                my $lon0_r = deg2rad($lon0);
+                if ($cache && !eval { $cache->store_coords($File::Find::name, $lat, $lon); 1 }) {
+                    warn "Cache write failed, continuing without it: $@\n";
+                    $cache = undef;
+                }
 
-                # great_circle_distance ожидает (долгота, широта)
-                my $dist_km = great_circle_distance($lon_r, $lat_r, $lon0_r, $lat0_r, $RADIUS);
+                my $dist_km = File::Find::Geotagged::distance_km($lat, $lon, $lat0, $lon0);
 
                 if ($dist_km <= $radius_km) {
                     printf "%s\t%.3f km - %f, %f\n", $File::Find::name, $dist_km, $lat, $lon;

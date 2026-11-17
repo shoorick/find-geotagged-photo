@@ -32,11 +32,27 @@ Output lists each matching file with its distance and coordinates:
 /home/user/photo/belgrade.jpg	0.432 km - 44.786200, 20.449100
 ```
 
+## Cache
+
+Coordinates of every geotagged file found during a scan are stored in a
+SQLite database at `$XDG_DATA_HOME/find-geotagged/geotagged.db`
+(default `~/.local/share/find-geotagged/geotagged.db`). On each run the
+cache is queried first with a bounding box around the requested point,
+the hits are filtered to the actual circle, and only files missing from
+the cache are scanned via EXIF — so repeated searches over the same
+directories get faster.
+
+The cache table `photos` stores the absolute file path (`filename`,
+UNIQUE), `latitude` and `longitude`, with a composite index on
+`(latitude, longitude)` for the bounding-box lookup. The implementation
+lives in the `File::Find::Geotagged` module (`lib/`).
+
 ## Requirements
 
 - Perl
 - `Image::ExifTool`
-- `File::Find`, `Math::Trig` (core modules)
+- `DBI` + `DBD::SQLite`
+- `File::Find`, `Math::Trig`, `Cwd`, `FindBin` (core modules)
 
 ## Tests
 
